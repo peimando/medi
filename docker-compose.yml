@@ -1,0 +1,82 @@
+version: "3.9"
+
+services:
+  # ─── Base de datos ──────────────────────────────────────────
+  db:
+    image: postgres:15-alpine
+    container_name: mediqueue_db
+    environment:
+      POSTGRES_USER:     mediqueue_user
+      POSTGRES_PASSWORD: mediqueue_pass
+      POSTGRES_DB:       mediqueue
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mediqueue_user -d mediqueue"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # ─── Redis ──────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: mediqueue_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # ─── Backend ────────────────────────────────────────────────
+  app:
+    build: .
+    container_name: mediqueue_app
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV:     production
+      DATABASE_URL: postgresql://mediqueue_user:mediqueue_pass@db:5432/mediqueue
+      REDIS_HOST:   redis
+      REDIS_PORT:   6379
+      JWT_SECRET:   cambia_esto_en_produccion_minimo_64_caracteres_aqui
+      PORT:         3000
+      CORS_ORIGIN:  "*"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: >
+      sh -c "node migrations/run.js && node server.js"
+    restart: unless-stopped
+
+  # ─── BD de test (aislada) ───────────────────────────────────
+  db_test:
+    image: postgres:15-alpine
+    container_name: mediqueue_db_test
+    environment:
+      POSTGRES_USER:     mediqueue_user
+      POSTGRES_PASSWORD: mediqueue_pass
+      POSTGRES_DB:       mediqueue_test
+    ports:
+      - "5433:5432"
+    tmpfs:
+      - /var/lib/postgresql/data
+    profiles:
+      - test
+
+volumes:
+  postgres_data:
+  redis_data:
