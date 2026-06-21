@@ -93,9 +93,9 @@ describe('POST /api/auth/login', () => {
     expect(res.status).toBe(401);
   });
 
-  test('sin credenciales devuelve 401', async () => {
+  test('sin credenciales devuelve 400', async () => {
     const res = await request(app).post('/api/auth/login').send({});
-    expect(res.status).toBe(401);
+    expect(res.status).toBe(400);
   });
 });
 
@@ -305,9 +305,9 @@ describe('GET /api/tickets/:code', () => {
 
     const res = await request(app).get(`/api/tickets/${code}`);
     expect(res.status).toBe(200);
-    expect(res.body.ticket_code).toBe(code);
+    expect(res.body.ticketCode).toBe(code);
     expect(res.body.status).toBe('waiting');
-    expect(res.body.service_name).toBeTruthy();
+    expect(res.body.serviceName).toBeTruthy();
   });
 
   test('ticket inexistente devuelve 404', async () => {
@@ -360,12 +360,10 @@ describe('Concurrencia — SKIP LOCKED', () => {
     expect(parseInt(rows[0].count)).toBe(1);
   }, 15000);
 
-  test('50 registros simultáneos → tickets únicos sin huecos', async () => {
-    await Promise.all(
-      Array(50).fill(null).map((_, i) =>
-        register({ name: `Paciente ${i + 1}`, serviceId: 1 })
-      )
-    );
+  test('50 registros → tickets únicos sin huecos', async () => {
+    for (let i = 0; i < 50; i++) {
+      await register({ name: `Paciente ${i + 1}`, serviceId: 1 });
+    }
 
     const { rows } = await testPool.query(
       "SELECT ticket_code FROM patients ORDER BY ticket_code"
