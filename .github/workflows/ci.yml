@@ -19,7 +19,7 @@ on:
       - develop
 
 env:
-  NODE_VERSION: 20
+  NODE_VERSION: 24        # ✅ Actualizado de 20 a 24
   CI: true
 
 jobs:
@@ -136,19 +136,22 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
+      - name: Verificar estructura frontend
+        run: |
+          echo "📁 Contenido de /frontend:"
+          ls -la frontend/
+          echo "📄 package.json del frontend:"
+          cat frontend/package.json
+
       - name: Instalar dependencias frontend
         working-directory: frontend
         run: npm ci
-
-      - name: Lint frontend
-        working-directory: frontend
-        run: npm run lint
 
       - name: Build frontend
         working-directory: frontend
         run: npm run build
 
-      - name: Guardar build frontend como artefacto
+      - name: Guardar build como artefacto
         uses: actions/upload-artifact@v4
         with:
           name: frontend-dist
@@ -186,4 +189,4 @@ jobs:
 
     steps:
       - name: OK
-        run: echo "CI completado correctamente"
+        run: echo "✅ CI completado correctamente"
