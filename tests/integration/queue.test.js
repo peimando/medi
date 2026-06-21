@@ -4,6 +4,7 @@ require('dotenv').config();
 const request = require('supertest');
 const { Pool } = require('pg');
 const app     = require('../../server');
+const { initConfig } = require('../../server');
 const bcrypt  = require('bcryptjs');
 
 const DB_URL = process.env.TEST_DATABASE_URL
@@ -17,6 +18,7 @@ beforeAll(async () => {
   const path = require('path');
   const sql  = fs.readFileSync(path.join(__dirname, '../../migrations/001_init.sql'), 'utf8');
   await testPool.query(sql).catch(() => {});
+  await initConfig(testPool);
 }, 30000);
 
 beforeEach(async () => {

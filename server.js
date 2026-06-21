@@ -333,6 +333,10 @@ app.use(errorHandler);
 // ─── ARRANCAR ─────────────────────────────────────────────────
 const PORT = parseInt(process.env.PORT || '3000');
 
+async function initConfig(pool) {
+  await cfg.load(pool, null);
+}
+
 async function recoverOrphanedServing() {
   const timeoutMin = cfg.getSysInt('serving_timeout_minutes') || 30;
   const { rowCount } = await pgPool.query(
@@ -406,6 +410,7 @@ process.on('SIGINT',  () => shutdown('SIGINT'));
 
 // Exportar para tests
 module.exports = app;
+module.exports.initConfig = initConfig;
 module.exports.withPool = (pool) => {
   const appClone = require('express')();
   appClone.get('/health', async (req, res) => {
