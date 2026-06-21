@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { apiFetch } from "../hooks/useApi";
 
 const LAYOUT_DEFAULTS = {
@@ -81,6 +81,28 @@ export default function DisplayView({ config, setView, screenSlug }) {
 
   const currentAlert = activeAlerts[alertIndex % activeAlerts.length] || null;
 
+  const prevTickets = useRef({});
+  const [animatingIds, setAnimatingIds] = useState(new Set());
+  const animTimeoutRef = useRef(null);
+
+  useEffect(() => {
+    if (!screenData) return;
+    const newIds = new Set();
+    screenData.forEach(s => {
+      const prev = prevTickets.current[s.id];
+      if (prev && prev !== s.ticket_code) {
+        newIds.add(s.id);
+      }
+      prevTickets.current[s.id] = s.ticket_code;
+    });
+    if (newIds.size > 0) {
+      if (animTimeoutRef.current) clearTimeout(animTimeoutRef.current);
+      setAnimatingIds(prev => new Set([...prev, ...newIds]));
+      animTimeoutRef.current = setTimeout(() => setAnimatingIds(new Set()), 2200);
+    }
+    return () => { if (animTimeoutRef.current) clearTimeout(animTimeoutRef.current); };
+  }, [screenData]);
+
   const bgStyle = screenCfg?.background_image
     ? { backgroundImage: `url(${screenCfg.background_image})`, backgroundSize: layout.background_fit, backgroundPosition: 'center', backgroundColor: layout.background_color }
     : { backgroundColor: layout.background_color };
@@ -160,12 +182,14 @@ export default function DisplayView({ config, setView, screenSlug }) {
 
         <div className={`flex gap-4 flex-1 min-h-0 ${isSidebar ? 'flex-row' : 'flex-col'}`}>
           <div className={`grid ${gridColsClass} gap-4 flex-1`}>
-            {(screenData || []).map(s => (
-              <div key={s.id} className="bg-black/40 border-2 rounded-2xl p-5 text-center flex flex-col justify-between backdrop-blur-sm"
+            {(screenData || []).map(s => {
+              const isAnimating = animatingIds.has(s.id);
+              return (
+              <div key={s.id} className={`bg-black/40 border-2 rounded-2xl p-5 text-center flex flex-col justify-between backdrop-blur-sm ${isAnimating ? 'animate-flash-border' : ''}`}
                 style={{ borderColor: s.color + '66' }}>
                 <p className="text-sm font-bold mb-3 drop-shadow" style={{ color: s.color }}>{s.icon} {s.name}</p>
                 <div className="bg-black/30 rounded-xl p-5 mb-3 flex-1 flex flex-col items-center justify-center">
-                  <p className={`${layout.font_size} font-black text-yellow-400 tracking-widest drop-shadow-lg`}>{s.ticket_code || '---'}</p>
+                  <p className={`${layout.font_size} font-black tracking-widest drop-shadow-lg ${isAnimating ? 'text-yellow-300 animate-pulse-glow' : 'text-yellow-400'}`}>{s.ticket_code || '---'}</p>
                   {layout.show_patient_names && s.patient_name && (
                     <p className="text-sm text-white/80 mt-2 drop-shadow truncate max-w-full">{s.patient_name}</p>
                   )}
@@ -173,7 +197,8 @@ export default function DisplayView({ config, setView, screenSlug }) {
                 {s.box_name && <p className="text-xs text-blue-300 mb-1 drop-shadow">{s.box_name}</p>}
                 <p className="text-xs text-gray-400 drop-shadow">Espera: {s.waiting ?? '—'}</p>
               </div>
-            ))}
+              );
+            })}
           </div>
 
           {banner.enabled && isSidebar && (
