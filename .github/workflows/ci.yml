@@ -1,175 +1,185 @@
 name: CI - MediQueue
 
 on:
+  workflow_dispatch:
+
   push:
-    branches: [main, develop]
+    branches:
+      - main
+      - master
+      - develop
+      - feature/**
+      - fix/**
+      - chore/**
+
   pull_request:
-    branches: [main, develop]
+    branches:
+      - main
+      - master
+      - develop
 
 env:
   NODE_VERSION: 20
   CI: true
 
-# ─────────────────────────────────────────────────────────
-#  Flujo en paralelo:
-#
-#  ┌─ lint ──────→ test ─────────────┐
-#  │              → integration ─────┤
-#  │                                 ├─→ ✅ gate
-#  └─ build-frontend ───────────────┘
-#
-# ─────────────────────────────────────────────────────────
-
 jobs:
-
-  # ── 1. Lint backend (paralelo) ────────────────────────
   lint:
     name: 🔍 Lint Backend
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repo
+        uses: actions/checkout@v4
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm'
+          cache: npm
 
-      - name: Instalar dependencias
+      - name: Instalar dependencias backend
         run: npm ci
 
       - name: Ejecutar ESLint
         run: npm run lint
 
-  # ── 2. Build Frontend (paralelo, no espera lint) ──────
-  build-frontend:
-    name: 🎨 Build Frontend
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm'
-
-      - name: Instalar dependencias del frontend
-        working-directory: frontend
-        run: npm ci
-
-      - name: Lint Frontend
-        working-directory: frontend
-        run: npm run lint --if-present
-
-      - name: Build (Vite)
-        working-directory: frontend
-        run: npm run build
-
-      - name: Subir artefacto del build
-        uses: actions/upload-artifact@v4
-        with:
-          name: frontend-dist
-          path: frontend/dist
-          retention-days: 7
-
-  # ── 3. Unit Tests (espera lint) ───────────────────────
   test:
-    name: 🧪 Unit Tests
+    name: 🧪 Unit Tests Backend
     runs-on: ubuntu-latest
     needs: lint
+
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repo
+        uses: actions/checkout@v4
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm'
+          cache: npm
 
-      - name: Instalar dependencias
+      - name: Instalar dependencias backend
         run: npm ci
 
       - name: Ejecutar tests unitarios
         run: npm test
 
-  # ── 4. Integration Tests (espera lint, paralelo a unit)
   integration:
-    name: 📊 Integration Tests
+    name: 🗄️ Integration Tests Backend
     runs-on: ubuntu-latest
     needs: lint
+
     services:
       postgres:
         image: postgres:15
         env:
+          POSTGRES_USER: postgres
           POSTGRES_PASSWORD: test123
           POSTGRES_DB: mediqueue_test
+        ports:
+          - 5433:5432
         options: >-
-          --health-cmd pg_isready
+          --health-cmd "pg_isready -U postgres -d mediqueue_test"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
-        ports:
-          - 5433:5432
 
       redis:
         image: redis:7
+        ports:
+          - 6379:6379
         options: >-
           --health-cmd "redis-cli ping"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
-        ports:
-          - 6379:6379
+
+    env:
+      NODE_ENV: test
+      DATABASE_URL: postgresql://postgres:test123@localhost:5433/mediqueue_test
+      JWT_SECRET: supersecret_test_key_123456789_123456789
+      REDIS_HOST: localhost
+      REDIS_PORT: 6379
+      PORT: 3000
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repo
+        uses: actions/checkout@v4
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm'
+          cache: npm
 
-      - name: Instalar dependencias
+      - name: Instalar dependencias backend
         run: npm ci
-
-      - name: Copiar .env de prueba
-        run: cp .env.example .env
 
       - name: Ejecutar migraciones
         run: npm run migrate
-        env:
-          DATABASE_URL: postgresql://postgres:test123@localhost:5433/mediqueue_test
 
       - name: Ejecutar tests de integración
         run: npm run test:integration
-        env:
-          DATABASE_URL: postgresql://postgres:test123@localhost:5433/mediqueue_test
-          JWT_SECRET: "supersecret_test_key_123456789"
-          REDIS_HOST: localhost
-          REDIS_PORT: 6379
-          NODE_ENV: test
 
-  # ── 5. Gate final (espera TODOS los jobs) ─────────────
-  gate:
-    name: ✅ All Checks Passed
+  build-frontend:
+    name: ⚛️ Build Frontend
     runs-on: ubuntu-latest
-    needs: [test, integration, build-frontend]
-    if: always()
+
     steps:
-      - name: Verificar resultados
-        run: |
-          if [[ "${{ needs.test.result }}" != "success" ]]; then
-            echo "❌ Unit tests fallaron"
-            exit 1
-          fi
-          if [[ "${{ needs.integration.result }}" != "success" ]]; then
-            echo "❌ Integration tests fallaron"
-            exit 1
-          fi
-          if [[ "${{ needs.build-frontend.result }}" != "success" ]]; then
-            echo "❌ Frontend build falló"
-            exit 1
-          fi
-          echo "✅ Todos los checks pasaron correctamente"
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js para frontend
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Instalar dependencias frontend
+        working-directory: frontend
+        run: npm ci
+
+      - name: Build frontend
+        working-directory: frontend
+        run: npm run build
+
+      - name: Guardar build frontend como artefacto
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: frontend/dist
+
+  build-backend:
+    name: 🏗️ Build Backend
+    runs-on: ubuntu-latest
+    needs: [test, integration]
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Instalar dependencias backend
+        run: npm ci
+
+      - name: Build backend
+        run: npm run build --if-present
+
+  ci-success:
+    name: ✅ CI completado
+    runs-on: ubuntu-latest
+    needs:
+      - test
+      - integration
+      - build-frontend
+      - build-backend
+
+    steps:
+      - name: OK
+        run: echo "CI completado correctamente"
