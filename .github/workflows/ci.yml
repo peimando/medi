@@ -1,0 +1,92 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+# Cancela ejecuciones anteriores del mismo PR/rama si se pushea de nuevo
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Lint & Test
+    runs-on: ubuntu-latest
+
+    # Service containers: GitHub levanta Postgres y Redis como sidecars
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: mediqueue
+          POSTGRES_PASSWORD: mediqueue
+          POSTGRES_DB: mediqueue_test
+        ports:
+          - 5432:5432
+        # Espera a que Postgres esté listo antes de continuar
+        options: >-
+          --health-cmd "pg_isready -U mediqueue"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      NODE_ENV: test
+      DATABASE_URL: postgres://mediqueue:mediqueue@localhost:5432/mediqueue_test
+      REDIS_HOST: localhost
+      REDIS_PORT: 6379
+      JWT_SECRET: test-secret-key-minimo-de-32-caracteres-ok
+      PORT: 3000
+
+    steps:
+      - name: Checkout código
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          cache: npm
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      # Descomenta si añades un script de lint (recomendado más abajo)
+      - name: Lint
+        run: npm run lint
+
+      - name: Ejecutar migraciones
+        run: npm run migrate
+
+      - name: Tests unitarios
+        run: npm test
+
+      - name: Tests de integración
+        run: npm run test:integration
+  frontend:
+    name: Build Frontend
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+        working-directory: frontend
+      - run: npm run build
+        working-directory: frontend
