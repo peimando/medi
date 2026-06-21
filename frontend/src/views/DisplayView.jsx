@@ -82,23 +82,35 @@ export default function DisplayView({ config, setView, screenSlug }) {
   const currentAlert = activeAlerts[alertIndex % activeAlerts.length] || null;
 
   const prevTickets = useRef({});
+  const initialLoadDone = useRef(false);
   const [animatingIds, setAnimatingIds] = useState(new Set());
   const animTimeoutRef = useRef(null);
 
   useEffect(() => {
     if (!screenData) return;
+
+    if (!initialLoadDone.current) {
+      initialLoadDone.current = true;
+      screenData.forEach(s => {
+        prevTickets.current[s.id] = `${s.ticket_code ?? ''}|${s.called_at ?? ''}`;
+      });
+      return;
+    }
+
     const newIds = new Set();
     screenData.forEach(s => {
+      const key = `${s.ticket_code ?? ''}|${s.called_at ?? ''}`;
       const prev = prevTickets.current[s.id];
-      if (prev && prev !== s.ticket_code) {
+      if (prev !== key) {
         newIds.add(s.id);
       }
-      prevTickets.current[s.id] = s.ticket_code;
+      prevTickets.current[s.id] = key;
     });
+
     if (newIds.size > 0) {
       if (animTimeoutRef.current) clearTimeout(animTimeoutRef.current);
       setAnimatingIds(prev => new Set([...prev, ...newIds]));
-      animTimeoutRef.current = setTimeout(() => setAnimatingIds(new Set()), 2200);
+      animTimeoutRef.current = setTimeout(() => setAnimatingIds(new Set()), 2500);
     }
     return () => { if (animTimeoutRef.current) clearTimeout(animTimeoutRef.current); };
   }, [screenData]);
@@ -185,16 +197,25 @@ export default function DisplayView({ config, setView, screenSlug }) {
             {(screenData || []).map(s => {
               const isAnimating = animatingIds.has(s.id);
               return (
-              <div key={s.id} className={`bg-black/40 border-2 rounded-2xl p-5 text-center flex flex-col justify-between backdrop-blur-sm ${isAnimating ? 'animate-flash-border' : ''}`}
+              <div key={s.id} className={`bg-black/40 border-2 rounded-2xl p-5 text-center flex flex-col justify-between backdrop-blur-sm ${isAnimating ? 'animate-flash-border !border-yellow-400/80' : ''}`}
                 style={{ borderColor: s.color + '66' }}>
                 <p className="text-sm font-bold mb-3 drop-shadow" style={{ color: s.color }}>{s.icon} {s.name}</p>
-                <div className="bg-black/30 rounded-xl p-5 mb-3 flex-1 flex flex-col items-center justify-center">
-                  <p className={`${layout.font_size} font-black tracking-widest drop-shadow-lg ${isAnimating ? 'text-yellow-300 animate-pulse-glow' : 'text-yellow-400'}`}>{s.ticket_code || '---'}</p>
+                <div className={`rounded-xl mb-3 flex-1 flex flex-col items-center justify-center ${isAnimating ? 'bg-yellow-500/10 p-6' : 'bg-black/30 p-5'}`}>
+                  {isAnimating && (
+                    <span className="inline-block bg-yellow-500 text-black text-xs font-extrabold px-5 py-1.5 rounded-full mb-3 animate-calling-badge tracking-wider shadow-lg shadow-yellow-500/40">
+                      📢 LLAMANDO
+                    </span>
+                  )}
+                  <p className={`font-black tracking-widest drop-shadow-lg ${isAnimating ? 'text-yellow-200 text-7xl animate-pulse-glow' : `${layout.font_size} text-yellow-400`}`}>{s.ticket_code || '---'}</p>
                   {layout.show_patient_names && s.patient_name && (
                     <p className="text-sm text-white/80 mt-2 drop-shadow truncate max-w-full">{s.patient_name}</p>
                   )}
                 </div>
-                {s.box_name && <p className="text-xs text-blue-300 mb-1 drop-shadow">{s.box_name}</p>}
+                {s.box_name && (
+                  isAnimating
+                    ? <p className="text-lg text-yellow-300 font-black drop-shadow-lg animate-bounce-arrow mb-1 tracking-wide">→ {s.box_name} ←</p>
+                    : <p className="text-xs text-blue-300 mb-1 drop-shadow">{s.box_name}</p>
+                )}
                 <p className="text-xs text-gray-400 drop-shadow">Espera: {s.waiting ?? '—'}</p>
               </div>
               );

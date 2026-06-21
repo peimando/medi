@@ -61,6 +61,12 @@ export default function StaffView({ config, user, toast, setView, logout }) {
     await loadQueue(svc.id);
   });
 
+  const reCall = wrap('reCall', async () => {
+    if (!serving) { toast.warn('Sin paciente en servicio'); return; }
+    await apiFetch(`/api/services/${svc.id}/re-call`, { method: 'POST' });
+    toast.success(`Reiterando llamado: ${serving.ticketCode}`);
+  });
+
   const complete = wrap('complete', async () => {
     if (!serving) { toast.warn('Sin paciente en servicio'); return; }
     await apiFetch(`/api/services/${svc.id}/complete/${serving.id}`, { method: 'POST' });
@@ -142,9 +148,11 @@ export default function StaffView({ config, user, toast, setView, logout }) {
               );
             })}
           </div>
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-4 gap-2">
             <Btn onClick={async () => { try { setApiErr(null); await callNext(); } catch (e) { setApiErr(e.message); toast.error(e.message); } }}
               loading={is('callNext')} disabled={!queue.length} className="w-full justify-center">📞 Llamar</Btn>
+            <Btn onClick={() => reCall().catch(e => toast.error(e.message))}
+              loading={is('reCall')} disabled={!serving} variant="ghost" className="w-full justify-center">🔊 Reiterar</Btn>
             <Btn onClick={() => complete().catch(e => toast.error(e.message))}
               loading={is('complete')} disabled={!serving} variant="success" className="w-full justify-center">✓ Completar</Btn>
             <Btn onClick={markAbsent}

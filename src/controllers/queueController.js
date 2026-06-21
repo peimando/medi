@@ -96,6 +96,24 @@ async function callNext(req, res, next) {
   } catch (err) { next(err); }
 }
 
+async function reCall(req, res, next) {
+  try {
+    ensureServiceAccess(req.user, req.params.serviceId);
+    const io = req.app.get('io');
+    const qs = new QueueService(pool, io, cfg);
+    const result = await qs.reCall({
+      serviceId: parseInt(req.params.serviceId),
+      staffId:   req.user.id,
+    });
+    await req.audit({
+      action: 'PATIENT_RECALLED',
+      entityType: 'PATIENT',
+      entityId: result.patient.id,
+    }).catch(() => {});
+    res.json({ success: true, patient: result.patient, box: result.box });
+  } catch (err) { next(err); }
+}
+
 function getQueuePublic(req, res, next) {
   req._publicQueueView = true;
   getQueue(req, res, next);
@@ -167,4 +185,4 @@ async function transfer(req, res, next) {
   } catch (err) { next(err); }
 }
 
-module.exports = { getQueue, getQueuePublic, callNext, complete, markAbsent, transfer };
+module.exports = { getQueue, getQueuePublic, callNext, complete, markAbsent, transfer, reCall };

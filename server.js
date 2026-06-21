@@ -168,7 +168,7 @@ app.get('/api/display/:slug', publicLimiter, async (req, res, next) => {
 
     const { rows: services } = await pgPool.query(
       `SELECT s.id, s.name, s.code, s.color, s.icon,
-              p.ticket_code, b.name AS box_name${nameCol}
+              p.ticket_code, p.called_at, b.name AS box_name${nameCol}
        FROM services s
        LEFT JOIN patients p ON p.service_id=s.id AND p.status='serving'
        LEFT JOIN boxes b ON b.id=p.box_id
@@ -232,6 +232,12 @@ app.post('/api/services/:serviceId/call-next',
   auth, can('call_patients'),
   [param('serviceId').isInt()], validate,
   queueCtrl.callNext
+);
+
+app.post('/api/services/:serviceId/re-call',
+  auth, can('call_patients'),
+  [param('serviceId').isInt()], validate,
+  queueCtrl.reCall
 );
 
 app.post('/api/services/:serviceId/complete/:patientId',

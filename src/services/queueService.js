@@ -115,6 +115,50 @@ class QueueService {
     }
   }
 
+  async reCall({ serviceId, staffId }) {
+    const service = this.cfg.getServiceById(serviceId);
+    if (!service) throw Errors.INVALID_SERVICE(serviceId);
+
+    const { rows } = await this.pgPool.query(
+      `SELECT id, ticket_code, name, phone
+       FROM patients
+       WHERE service_id = $1 AND status = 'serving' AND called_by = $2
+       ORDER BY called_at DESC LIMIT 1`,
+      [serviceId, staffId]
+    );
+    if (!rows.length) throw Errors.NO_PATIENT_SERVING();
+
+    const patient = rows[0];
+    const { rows: boxRows } = await this.pgPool.query(
+      `SELECT id, name FROM boxes
+       WHERE current_staff_id = $1 AND active = true LIMIT 1`,
+      [staffId]
+    );
+    const box = boxRows[0] || null;
+    const boxLabel = box?.name ?? service.name;
+
+    this.io.to(`service:${serviceId}`).emit('patient_called', {
+      ticketCode: patient.ticket_code, box: boxLabel,
+    });
+    this.io.to(`patient:${patient.id}`).emit('your_turn', {
+      ticketCode: patient.ticket_code, box: boxLabel,
+    });
+
+    await this.pgPool.query(
+      'UPDATE patients SET called_at=NOW(), updated_at=NOW() WHERE id=$1',
+      [patient.id]
+    );
+
+    if (patient.phone) {
+      const smsBody = this.cfg.renderSMS('your_turn', {
+        ticket: patient.ticket_code, box: boxLabel,
+      });
+      if (smsBody) logger.info(`[SMS] → ${patient.phone}: ${smsBody}`);
+    }
+
+    return { patient, box };
+  }
+
   async complete({ serviceId, patientId, staffId }) {
     const client = await this.pgPool.connect();
     try {
